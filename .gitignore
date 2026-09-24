@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Next.js build
+.next/
+out/
+
+# Env (keys stay out of git; template is committed)
+.env*
+!.env.example
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Scratch / agent work logs
+.superpowers/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Vercel
+.vercel/
