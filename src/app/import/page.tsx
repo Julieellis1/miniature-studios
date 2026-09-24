@@ -1,23 +1,28 @@
 "use client";
 import { useState } from "react";
 import { validateImportRow } from "@/lib/import";
+import { Card, PageHeader, Button, Field, StatusLine } from "@/components/ui";
 
 export default function ImportPage() {
   const [t, setT] = useState("");
   const [status, setStatus] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
+
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Import old app</h1>
-      <p>Paste export JSON from old index.html, then Import.</p>
-      <textarea
-        value={t}
-        onChange={(e) => setT(e.target.value)}
-        style={{ width: "100%", minHeight: 200 }}
-        placeholder='{"characters": [...]}'
-      />
-      <div>
-        <button
+    <main>
+      <PageHeader title="Import old app" sub="Paste export JSON from old index.html, then Import." />
+      <Card className="space-y-3">
+        <Field label="Export JSON">
+          <textarea
+            className="input font-mono text-xs"
+            value={t}
+            onChange={(e) => setT(e.target.value)}
+            style={{ minHeight: 200 }}
+            placeholder='{"characters": [...]}'
+          />
+        </Field>
+        <Button
+          variant="primary"
           onClick={async () => {
             try {
               setStatus("Importing…");
@@ -45,9 +50,7 @@ export default function ImportPage() {
                   n++;
                 } else {
                   const body = await r.json().catch(() => ({}));
-                  errs.push(
-                    `Row ${i + 1} (${v.body.name}): skipped — ${body.error ?? r.statusText}`
-                  );
+                  errs.push(`Row ${i + 1} (${v.body.name}): skipped — ${body.error ?? r.statusText}`);
                 }
               }
               setStatus(`Imported ${n}/${chars.length} characters`);
@@ -58,16 +61,16 @@ export default function ImportPage() {
           }}
         >
           Import
-        </button>
-      </div>
-      <div>{status}</div>
-      {errors.length > 0 && (
-        <ul>
-          {errors.map((e, i) => (
-            <li key={i}>{e}</li>
-          ))}
-        </ul>
-      )}
+        </Button>
+        <StatusLine text={status} />
+        {errors.length > 0 && (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-red-300">
+            {errors.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </main>
   );
 }
