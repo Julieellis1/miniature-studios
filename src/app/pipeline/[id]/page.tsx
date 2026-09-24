@@ -2,6 +2,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { buildConsistencyBlock } from "@/lib/chat";
+import { chatOnce } from "@/lib/chatClient";
 import { ScriptSchema, toMarkdown, type ProScript } from "@/lib/scriptSchema";
 import { Card, PageHeader, Button, Field, StatusLine } from "@/components/ui";
 
@@ -66,28 +67,22 @@ export default function PipelinePage({ params }: { params: { id: string } }) {
     const bible = buildConsistencyBlock(chars);
     const system = `You are the Miniature Life pro-script writer. Return STRICT JSON only (no markdown fences, no commentary) with shape {"consistencyBlock": string, "scenes": Scene[${sceneCount}]} where each Scene = {"slug": string (e.g. "INT. GIANT KITCHEN - DAY"), "durationSec": number, "setting": string, "backgroundTheme": string (setting + set dressing + scale gags with giant objects), "lighting": string, "beats": string[3-5 visual, filmable beats], "camera": {"shotSize": string (ECU/CU/MS/WS), "angle": string (eye-level/low/high/dutch), "movement": string (static/push-in/dolly-in/crane-down/handheld-pan/tracking), "lens": string (24/35/50mm)}, "dialogue": string[] (character voice + pidgin where fitting), "sound": {"sfx": string[] (with timestamps), "music": string}, "transition": string, "aiPrompt": string (single copy-ready paragraph for Veo/Kling/Runway/Pika: characters + scale + setting + lighting + camera movement + action + mood), "negativePrompt": string}. Every scene MUST include camera.shotSize, camera.angle, camera.movement, camera.lens and sound.sfx + sound.music. Prepend character consistency from the bible into consistencyBlock.`;
     const user = `Character bible:\n${bible}\n\nStory: ${story?.title ?? "Untitled"}\nIdea: ${story?.idea ?? ""}\nPremise: ${story?.premise ?? ""}\nGoal: ${story?.goal ?? ""}\nWrite exactly ${sceneCount} scenes. Total runtime 15-35s, hook in first 2s.`;
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        modelId: Number(modelId),
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
-    const j = await r.json();
-    if (j.error) {
-      setStatus("Error: " + j.error);
+    let text: string;
+    try {
+      text = await chatOnce(Number(modelId), [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ]);
+    } catch (e: any) {
+      setStatus("Error: " + (e?.message ?? e) + " If this persists, Test the model in Models.");
       return;
     }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(extractJson(j.text));
+      parsed = JSON.parse(extractJson(text));
     } catch {
       setStatus("Error: model did not return valid JSON. Raw output kept below.");
-      setMarkdown(j.text);
+      setMarkdown(text);
       return;
     }
     const v = ScriptSchema.safeParse(parsed);

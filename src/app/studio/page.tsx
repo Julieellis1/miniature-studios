@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { buildConsistencyBlock } from "@/lib/chat";
+import { chatOnce } from "@/lib/chatClient";
 import { Card, PageHeader, Button, Field, StatusLine } from "@/components/ui";
 
 // Goal options verbatim from old index.html #goal select
@@ -100,30 +101,23 @@ export default function Studio() {
               variant="primary"
               onClick={async () => {
                 setStatus("Working…");
-                const models = await fetch("/api/models").then((r) => r.json());
-                const sel = models.find((m: any) => m.isSelected) ?? models[0];
-                if (!sel) {
-                  setStatus("Error: add a model in Models first.");
-                  return;
-                }
-                const bible = buildConsistencyBlock(chars.filter((c) => checked.has(c.id)));
-                const userText = `${title.trim() ? `Story title: ${title.trim()}\n\n` : ""}Here is my rough story idea:\n${idea}\n\nMy goal: ${goal}. First, help me polish the concept. Keep my core idea, explain the improved premise, characters involved, comedic hook, beginning/middle/end, and suggest a short scene-by-scene version. Then ask me what I want to change.`;
-                const r = await fetch("/api/chat", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    modelId: sel?.id,
-                    messages: [
-                      { role: "system", content: "You are the Miniature Life story partner. Character bible:\n" + bible },
-                      { role: "user", content: userText },
-                    ],
-                  }),
-                });
-                const j = await r.json();
-                if (j.error) setStatus("Error: " + j.error);
-                else {
-                  setOut(j.text);
+                try {
+                  const models = await fetch("/api/models").then((r) => r.json());
+                  const sel = models.find((m: any) => m.isSelected) ?? models[0];
+                  if (!sel) {
+                    setStatus("Error: add a model in Models first.");
+                    return;
+                  }
+                  const bible = buildConsistencyBlock(chars.filter((c) => checked.has(c.id)));
+                  const userText = `${title.trim() ? `Story title: ${title.trim()}\n\n` : ""}Here is my rough story idea:\n${idea}\n\nMy goal: ${goal}. First, help me polish the concept. Keep my core idea, explain the improved premise, characters involved, comedic hook, beginning/middle/end, and suggest a short scene-by-scene version. Then ask me what I want to change.`;
+                  const text = await chatOnce(sel.id, [
+                    { role: "system", content: "You are the Miniature Life story partner. Character bible:\n" + bible },
+                    { role: "user", content: userText },
+                  ]);
+                  setOut(text);
                   setStatus("Done");
+                } catch (e: any) {
+                  setStatus("Error: " + (e?.message ?? e) + " If this persists, Test the model in Models.");
                 }
               }}
             >

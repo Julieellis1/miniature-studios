@@ -2,10 +2,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Card, PageHeader, Button, Field, StatusLine, Pill } from "@/components/ui";
+import { chatOnce } from "@/lib/chatClient";
 
 export default function ModelsPage() {
   const [rows, setRows] = useState<any[]>([]);
   const [status, setStatus] = useState("");
+  const [testState, setTestState] = useState<Record<number, string>>({});
   const [f, setF] = useState({
     label: "",
     provider: "openai",
@@ -74,6 +76,22 @@ export default function ModelsPage() {
     }
   };
 
+  const testModel = async (id: number) => {
+    setTestState((p) => ({ ...p, [id]: "Testing…" }));
+    const t0 = Date.now();
+    try {
+      const text = await chatOnce(
+        id,
+        [{ role: "user", content: "Reply with exactly: OK" }],
+        { timeoutMs: 30000, maxTokens: 16 }
+      );
+      const ms = ((Date.now() - t0) / 1000).toFixed(1);
+      setTestState((p) => ({ ...p, [id]: `✓ OK (${ms}s) — "${text.slice(0, 60)}"` }));
+    } catch (e: any) {
+      setTestState((p) => ({ ...p, [id]: "✗ " + (e?.message ?? e) }));
+    }
+  };
+
   return (
     <main>
       <PageHeader title="Models" sub="Bring your own keys. Pick a provider and choose the default model." />
@@ -129,8 +147,14 @@ export default function ModelsPage() {
                   <Pill>{m.model}</Pill>
                   <Pill>{m.baseUrl}</Pill>
                 </div>
+                {testState[m.id] ? (
+                  <div className="mt-1.5 text-xs text-slate-300">{testState[m.id]}</div>
+                ) : null}
               </div>
               <div className="flex gap-2">
+                <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={() => testModel(m.id)}>
+                  Test
+                </Button>
                 <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={() => selectDefault(m.id)}>
                   Use as default
                 </Button>
