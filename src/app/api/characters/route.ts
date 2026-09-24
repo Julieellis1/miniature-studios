@@ -11,7 +11,7 @@ import {
   storageConfigured,
 } from "@/lib/storage";
 
-export const MAX_IMAGE_CHARS = 2000000;
+const MAX_IMAGE_CHARS = 2000000;
 
 function tooLarge(imageUrl: unknown) {
   return typeof imageUrl === "string" && imageUrl.length > MAX_IMAGE_CHARS;
