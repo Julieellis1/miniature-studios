@@ -1,6 +1,45 @@
 // prisma/schema.prisma
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
-generator client { provider = "prisma-client-js" }
-model Model { id Int @id @default(autoincrement()); label String; provider String; baseUrl String; model String; apiKey String; isSelected Boolean @default(false); createdAt DateTime @default(now()) }
-model Character { id Int @id @default(autoincrement()); name String; role String @default(""); height String @default(""); color String @default(""); bibleDetails String @default(""); imageUrl String @default(""); createdAt DateTime @default(now()) }
-model Story { id Int @id @default(autoincrement()); title String @default("Untitled story"); idea String @default(""); goal String @default(""); chat Json @default("[]"); premise String @default(""); scenes Json @default("[]"); scriptMarkdown String @default(""); videoPrompts Json @default("[]"); checklist Json @default("[]"); updatedAt DateTime @updatedAt }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Model {
+  id         Int      @id @default(autoincrement())
+  label      String
+  provider   String
+  baseUrl    String
+  model      String
+  apiKey     String
+  isSelected Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Character {
+  id           Int      @id @default(autoincrement())
+  name         String
+  role         String   @default("")
+  height       String   @default("")
+  color        String   @default("")
+  bibleDetails String   @default("")
+  imageUrl     String   @default("")
+  createdAt    DateTime @default(now())
+}
+
+model Story {
+  id             Int      @id @default(autoincrement())
+  title          String   @default("Untitled story")
+  idea           String   @default("")
+  goal           String   @default("")
+  chat           Json     @default("[]")
+  premise        String   @default("")
+  scenes         Json     @default("[]")
+  scriptMarkdown String   @default("")
+  videoPrompts   Json     @default("[]")
+  checklist      Json     @default("[]")
+  updatedAt      DateTime @updatedAt
+}
