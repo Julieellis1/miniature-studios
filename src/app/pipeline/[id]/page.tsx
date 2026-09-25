@@ -27,6 +27,7 @@ export default function PipelinePage({ params }: { params: { id: string } }) {
   const [status, setStatus] = useState("");
   const [script, setScript] = useState<ProScript | null>(null);
   const [markdown, setMarkdown] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     fetch("/api/stories")
@@ -57,49 +58,77 @@ export default function PipelinePage({ params }: { params: { id: string } }) {
     setStatus("Copied to clipboard.");
   };
 
+  // Chunked generation: one scene per provider call so every request fits
+  // inside short serverless budgets (Vercel Hobby ~60s). Resumes from the
+  // scenes already on screen — a failed run keeps its completed scenes.
   const generate = async () => {
-    setStatus("Generating pro script…");
-    setScript(null);
+    if (busy) return;
     if (!modelId) {
       setStatus("Error: add/select a model in Models first.");
       return;
     }
-    const bible = buildConsistencyBlock(chars);
-    const system = `You are the Miniature Life pro-script writer. Return STRICT JSON only (no markdown fences, no commentary) with shape {"consistencyBlock": string, "scenes": Scene[${sceneCount}]} where each Scene = {"slug": string (e.g. "INT. GIANT KITCHEN - DAY"), "durationSec": number, "setting": string, "backgroundTheme": string (setting + set dressing + scale gags with giant objects), "lighting": string, "beats": string[3-5 visual, filmable beats], "camera": {"shotSize": string (ECU/CU/MS/WS), "angle": string (eye-level/low/high/dutch), "movement": string (static/push-in/dolly-in/crane-down/handheld-pan/tracking), "lens": string (24/35/50mm)}, "dialogue": string[] (character voice + pidgin where fitting), "sound": {"sfx": string[] (with timestamps), "music": string}, "transition": string, "aiPrompt": string (single copy-ready paragraph for Veo/Kling/Runway/Pika: characters + scale + setting + lighting + camera movement + action + mood), "negativePrompt": string}. Every scene MUST include camera.shotSize, camera.angle, camera.movement, camera.lens and sound.sfx + sound.music. Prepend character consistency from the bible into consistencyBlock.`;
-    const user = `Character bible:\n${bible}\n\nStory: ${story?.title ?? "Untitled"}\nIdea: ${story?.idea ?? ""}\nPremise: ${story?.premise ?? ""}\nGoal: ${story?.goal ?? ""}\nWrite exactly ${sceneCount} scenes. Total runtime 15-35s, hook in first 2s.`;
-    let text: string;
+    setBusy(true);
     try {
-      text = await chatOnce(Number(modelId), [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ]);
-    } catch (e: any) {
-      setStatus("Error: " + (e?.message ?? e) + " If this persists, Test the model in Models.");
-      return;
+      const bible = buildConsistencyBlock(chars);
+      const sceneSystem = `You are the Miniature Life pro-script writer. Return STRICT JSON only (no markdown fences, no commentary) with shape {"consistencyBlock": string, "scenes": [Scene]} containing EXACTLY ONE scene, where Scene = {"slug": string (e.g. "INT. GIANT KITCHEN - DAY"), "durationSec": number, "setting": string, "backgroundTheme": string (setting + set dressing + scale gags with giant objects), "lighting": string, "beats": string[3-5 visual, filmable beats], "camera": {"shotSize": string (ECU/CU/MS/WS), "angle": string (eye-level/low/high/dutch), "movement": string (static/push-in/dolly-in/crane-down/handheld-pan/tracking), "lens": string (24/35/50mm)}, "dialogue": string[] (character voice + pidgin where fitting), "sound": {"sfx": string[] (with timestamps), "music": string}, "transition": string, "aiPrompt": string (single copy-ready paragraph for Veo/Kling/Runway/Pika: characters + scale + setting + lighting + camera movement + action + mood), "negativePrompt": string}. The scene MUST include camera.shotSize, camera.angle, camera.movement, camera.lens and sound.sfx + sound.music. Prepend character consistency from the bible into consistencyBlock.`;
+      const resume = script && script.scenes.length > 0 && script.scenes.length < sceneCount ? script.scenes : [];
+      const done: ProScript["scenes"] = [...resume];
+      const block = script && resume.length ? script.consistencyBlock : "";
+      const paint = (scenes: ProScript["scenes"], cb: string) => {
+        const md = toMarkdown({ consistencyBlock: cb, scenes });
+        setScript({ consistencyBlock: cb, scenes });
+        setMarkdown(md);
+        return md;
+      };
+      if (!resume.length) {
+        setScript(null);
+        setMarkdown("");
+      }
+      for (let i = done.length + 1; i <= sceneCount; i++) {
+        setStatus(`Generating scene ${i}/${sceneCount}…`);
+        const prior = done.map((s, j) => `Scene ${j + 1}: ${s.slug} — ${s.beats.join(" / ")}`).join("\n");
+        const user = `Character bible:\n${bible}\n\nStory: ${story?.title ?? "Untitled"}\nIdea: ${story?.idea ?? ""}\nPremise: ${story?.premise ?? ""}\nGoal: ${story?.goal ?? ""}\nWrite scene ${i} of ${sceneCount} ONLY (no other scenes).${prior ? `\nPrevious scenes (stay consistent, do not repeat):\n${prior}` : ""}\nTotal runtime 15-35s${i === 1 ? ", hook in first 2s" : ""}.`;
+        let text: string;
+        try {
+          text = await chatOnce(Number(modelId), [
+            { role: "system", content: sceneSystem },
+            { role: "user", content: user },
+          ]);
+        } catch (e: any) {
+          paint(done, block || bible);
+          await fetch("/api/stories", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: storyId, scenes: done, scriptMarkdown: toMarkdown({ consistencyBlock: block || bible, scenes: done }) }),
+          });
+          setStatus(
+            `Stopped at scene ${i}/${sceneCount}: ${e?.message ?? e} — ${done.length} scene(s) kept. Hit Generate again to resume.`
+          );
+          return;
+        }
+        let one: ProScript;
+        try {
+          const v = ScriptSchema.safeParse(JSON.parse(extractJson(text)));
+          if (!v.success || !v.data.scenes.length) throw new Error(v.success ? "empty scenes" : v.error.message);
+          one = { consistencyBlock: v.data.consistencyBlock || block || bible, scenes: [v.data.scenes[0]] };
+        } catch (e: any) {
+          setStatus(`Scene ${i} came back invalid (${e?.message ?? e}). Hit Generate again to retry it — ${done.length} scene(s) kept.`);
+          return;
+        }
+        done.push(one.scenes[0]);
+        const cb = one.consistencyBlock;
+        const md = paint(done, cb);
+        await fetch("/api/stories", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: storyId, scenes: done, scriptMarkdown: md }),
+        });
+      }
+      setStory((s: any) => (s ? { ...s, scriptMarkdown: markdown } : s));
+      setStatus("Done — pro script saved.");
+    } finally {
+      setBusy(false);
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(extractJson(text));
-    } catch {
-      setStatus("Error: model did not return valid JSON. Raw output kept below.");
-      setMarkdown(text);
-      return;
-    }
-    const v = ScriptSchema.safeParse(parsed);
-    if (!v.success) {
-      setStatus("Error: script failed validation: " + v.error.message);
-      return;
-    }
-    const md = toMarkdown(v.data);
-    setScript(v.data);
-    setMarkdown(md);
-    await fetch("/api/stories", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: storyId, scenes: v.data.scenes, scriptMarkdown: md }),
-    });
-    setStory((s: any) => (s ? { ...s, scenes: v.data.scenes, scriptMarkdown: md } : s));
-    setStatus("Done — pro script saved.");
   };
 
   const download = () => {
@@ -159,7 +188,7 @@ export default function PipelinePage({ params }: { params: { id: string } }) {
             />
           </Field>
           <Button variant="primary" onClick={generate}>
-            Generate Pro Script
+            {busy ? "Generating…" : script && script.scenes.length > 0 && script.scenes.length < sceneCount ? `Resume (${script.scenes.length}/${sceneCount})` : "Generate Pro Script"}
           </Button>
         </div>
         <div className="mt-3">
