@@ -3,6 +3,12 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { chatEndpoint } from "@/lib/models";
 import { buildProviderBody } from "@/lib/chat";
+
+// Long generations (full pro scripts) can take minutes. Vercel Hobby caps
+// functions below this; `maxDuration` applies where the plan allows it.
+export const maxDuration = 300;
+const TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS) || 300000;
+const TIMEOUT_S = Math.round(TIMEOUT_MS / 1000);
 export async function POST(req: Request) {
   let body: any;
   try {
@@ -28,13 +34,13 @@ export async function POST(req: Request) {
   }
   let r: Response;
   try {
-    r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", ...(m.apiKey ? { Authorization: "Bearer " + m.apiKey } : {}) }, body: JSON.stringify(buildProviderBody(m.model, messages, maxTokens)), signal: AbortSignal.timeout(60000) });
+    r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", ...(m.apiKey ? { Authorization: "Bearer " + m.apiKey } : {}) }, body: JSON.stringify(buildProviderBody(m.model, messages, maxTokens)), signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (e: any) {
     const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
     return NextResponse.json(
       {
         error: timedOut
-          ? "Provider timed out after 60s. Use Test in Models to check connectivity."
+          ? `Provider timed out after ${TIMEOUT_S}s. Try fewer scenes/shorter output, or Test the model in Models.`
           : `Could not reach provider: ${e?.message ?? e}. Check base URL in Models and use Test.`,
       },
       { status: 502 }

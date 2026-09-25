@@ -4,7 +4,7 @@ export async function chatOnce(
   messages: { role: string; content: string }[],
   opts: { timeoutMs?: number; maxTokens?: number } = {}
 ): Promise<string> {
-  const timeoutMs = opts.timeoutMs ?? 90000;
+  const timeoutMs = opts.timeoutMs ?? 300000;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
